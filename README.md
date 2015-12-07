@@ -1,1 +1,1 @@
-# MetaRenderer
+# MetaRenderer MSAA and HDR example
