@@ -12,7 +12,6 @@ typedef struct
 extern glshader_t shaders[MAX_SHADERS];
 extern int numshaders;
 
-void R_InitShaders(void);
 GLuint R_CompileShader(const char *vscode, const char *fscode, const char *vsfile, const char *fsfile);
 void GL_UseProgram(GLuint program);
 void GL_EndProgram(void);

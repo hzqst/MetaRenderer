@@ -9,26 +9,37 @@ void R_InitShaders(void)
 	numshaders = 0;
 }
 
+void R_FreeShaders(void)
+{
+	/*for (int i = 0; i < numshaders; i++)
+	{
+		if(shaders[i].program)
+		{
+			qglDetachObjectARB(shaders[i].program, shaders[i].vs);
+			qglDetachObjectARB(shaders[i].program, shaders[i].fs);
+			qglDeleteObjectARB(shaders[i].vs);
+			qglDeleteObjectARB(shaders[i].fs);
+			qglDeleteProgramsARB(1, (GLuint *)&shaders[i].program);
+		}
+	}*/
+	numshaders = 0;
+}
+
 qboolean GL_IsShaderError(GLuint shader, const char *filename)
 {
-	char compiler_log[1000];
-	int blen;
+	char szCompilerLog[1024];
+	int iStatus, nInfoLength;
 
-	qglGetShaderiv(shader, GL_INFO_LOG_LENGTH , &blen);
-	if(blen > 1)
+	qglGetShaderiv(shader, GL_COMPILE_STATUS, &iStatus); 
+	qglGetInfoLogARB(shader, sizeof(szCompilerLog), &nInfoLength, szCompilerLog);
+
+	if(!iStatus)
 	{
-		int slen;
-		qglGetInfoLogARB(shader, 1000, &slen, compiler_log);
-		if(!strstr(compiler_log, "error"))
-		{
-			gEngfuncs.Con_Printf("Shader %s compiled with warning: %s\n", filename, compiler_log);
-			return false;
-		}
-		//gEngfuncs.Con_Printf("Shader %s compiled with error: %s\n", filename, compiler_log);
-		Sys_ErrorEx("Shader %s compiled with error: %s\n", filename, compiler_log);
+		gEngfuncs.Con_DPrintf("Shader %s compiled with error: %s\n", filename, szCompilerLog);
 		return true;
 	}
 
+	gEngfuncs.Con_DPrintf("Shader %s compiled result: %s\n", filename, szCompilerLog);
 	return false;
 }
 

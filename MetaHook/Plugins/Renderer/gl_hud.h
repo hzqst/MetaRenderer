@@ -11,6 +11,38 @@
 typedef struct
 {
 	int program;
+	int base;
+	int src_col;
+}hud_drawhudmask_program_t;
+
+typedef struct
+{
+	int program;
+	int base;
+	int alpha_range;
+	int offset;
+}hud_drawcolormask_program_t;
+
+typedef struct
+{
+	int program;
+	int base;
+	int center;
+	int radius;
+	int blurdist;
+}hud_drawroundrect_program_t;
+
+typedef struct
+{
+	int program;
+	int tex0;
+	int rt_w;
+	int rt_h;
+}pp_fxaa_program_t;
+
+typedef struct
+{
+	int program;
 	int tex;
 }pp_downsample_program_t;
 
@@ -76,11 +108,29 @@ typedef struct
 	int gamma;
 }pp_tonemap_program_t;
 
+extern qboolean drawhudinworld;
+extern qboolean draw3dhud;
+extern int pp_fxaa_program;
 extern cvar_t *r_hdr;
 extern cvar_t *r_hdr_debug;
+extern cvar_t *r_hudinworld_debug;
+extern int r_hudinworld_texture;
 
 void R_InitBlur(const char *vs_code, int samples);
 void R_BeginHUDQuad(void);
+
+void R_BeginFXAA(int w, int h);
+void R_BeginDrawRoundRect(int centerX, int centerY, float radius, float blurdist);
+void R_BeginDrawHudMask(int r, int g, int b);
+void R_EndProgram(void);
+
+int R_Get3DHUDTexture(void);
+void R_Draw3DHUDQuad(int x, int y, int left, int top);
+void R_BeginDrawTrianglesInHUD_Direct(int x, int y);
+void R_BeginDrawTrianglesInHUD_FBO(int x, int y, int left, int top);
+void R_FinishDrawTrianglesInHUD(void);
+void R_BeginDrawHUDInWorld(int texid, int w, int h);
+void R_FinishDrawHUDInWorld(void);
 
 void R_DownSample(FBO_Container_t *src, FBO_Container_t *dst, qboolean filter2x2);
 void R_LuminPass(FBO_Container_t *src, FBO_Container_t *dst, int logexp);

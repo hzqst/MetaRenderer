@@ -1,6 +1,13 @@
 #include "gl_local.h"
 
+qboolean drawhudinworld = false;
+qboolean draw3dhud = false;
 int last_luminance = 0;
+
+SHADER_DEFINE(hud_drawcolormask);
+SHADER_DEFINE(hud_drawhudmask);
+SHADER_DEFINE(hud_drawroundrect);
+SHADER_DEFINE(pp_fxaa);
 
 //HDR uniform
 SHADER_DEFINE(pp_downsample);
@@ -19,12 +26,31 @@ cvar_t *r_hdr_blurwidth = NULL;
 cvar_t *r_hdr_exposure = NULL;
 cvar_t *r_hdr_darkness = NULL;
 cvar_t *r_hdr_adaptation = NULL;
+cvar_t *r_hudinworld_debug = NULL;
 cvar_t *r_hdr_debug = NULL;
+
+int r_hudinworld_texture = 0;
 
 void R_InitRefHUD(void)
 {
 	if(gl_shader_support)
 	{
+		//FXAA Pass
+		char *pp_fxaa_vscode = (char *)gEngfuncs.COM_LoadFile("resource\\shader\\pp_fxaa.vsh", 5, 0);
+		char *pp_fxaa_fscode = (char *)gEngfuncs.COM_LoadFile("resource\\shader\\pp_fxaa.fsh", 5, 0);
+		if(pp_fxaa_vscode && pp_fxaa_fscode)
+		{
+			pp_fxaa.program = R_CompileShader(pp_fxaa_vscode, pp_fxaa_fscode, "pp_fxaa.vsh", "pp_fxaa.fsh");
+			if(pp_fxaa.program)
+			{
+				SHADER_UNIFORM(pp_fxaa, tex0, "tex0");
+				SHADER_UNIFORM(pp_fxaa, rt_w, "rt_w");
+				SHADER_UNIFORM(pp_fxaa, rt_h, "rt_h");
+			}
+			gEngfuncs.COM_FreeFile(pp_fxaa_vscode);
+			gEngfuncs.COM_FreeFile(pp_fxaa_fscode);
+		}
+
 		//DownSample Pass
 		char *pp_common_vscode = (char *)gEngfuncs.COM_LoadFile("resource\\shader\\pp_common.vsh", 5, 0);
 		char *pp_downsample_fscode = (char *)gEngfuncs.COM_LoadFile("resource\\shader\\pp_downsample.fsh", 5, 0);
@@ -137,6 +163,49 @@ void R_InitRefHUD(void)
 			gEngfuncs.COM_FreeFile(pp_tonemap_vscode);
 			gEngfuncs.COM_FreeFile(pp_tonemap_fscode);
 		}
+
+		char *hud_drawroundrect_vscode = (char *)gEngfuncs.COM_LoadFile("resource\\shader\\hud_drawroundrect.vsh", 5, 0);
+		char *hud_drawroundrect_fscode = (char *)gEngfuncs.COM_LoadFile("resource\\shader\\hud_drawroundrect.fsh", 5, 0);
+		if(hud_drawroundrect_vscode && hud_drawroundrect_fscode)
+		{
+			hud_drawroundrect.program = R_CompileShader(hud_drawroundrect_vscode, hud_drawroundrect_fscode, "hud_drawroundrect.vsh", "hud_drawroundrect.fsh");
+			if(hud_drawroundrect.program)
+			{
+				SHADER_UNIFORM(hud_drawroundrect, base, "base");
+				SHADER_UNIFORM(hud_drawroundrect, center, "center");
+				SHADER_UNIFORM(hud_drawroundrect, radius, "radius");
+				SHADER_UNIFORM(hud_drawroundrect, blurdist, "blurdist");
+			}
+			gEngfuncs.COM_FreeFile(hud_drawroundrect_vscode);
+			gEngfuncs.COM_FreeFile(hud_drawroundrect_fscode);
+		}
+
+		char *hud_drawhudmask_vscode = (char *)gEngfuncs.COM_LoadFile("resource\\shader\\hud_drawhudmask.vsh", 5, 0);
+		char *hud_drawhudmask_fscode = (char *)gEngfuncs.COM_LoadFile("resource\\shader\\hud_drawhudmask.fsh", 5, 0);
+		if(hud_drawhudmask_vscode && hud_drawhudmask_fscode)
+		{
+			hud_drawhudmask.program = R_CompileShader(hud_drawhudmask_vscode, hud_drawhudmask_fscode, "hud_drawhudmask.vsh", "hud_drawhudmask.fsh");
+			if(hud_drawhudmask.program)
+			{
+				SHADER_UNIFORM(hud_drawhudmask, base, "base");
+				SHADER_UNIFORM(hud_drawhudmask, src_col, "src_col");
+			}
+			gEngfuncs.COM_FreeFile(hud_drawhudmask_vscode);
+			gEngfuncs.COM_FreeFile(hud_drawhudmask_fscode);
+		}
+
+		char *hud_drawcolormask_fscode = (char *)gEngfuncs.COM_LoadFile("resource\\shader\\hud_drawcolormask.fsh", 5, 0);
+		if(pp_common_vscode && hud_drawcolormask_fscode)
+		{
+			hud_drawcolormask.program = R_CompileShader(pp_common_vscode, hud_drawcolormask_fscode, "pp_common.vsh", "hud_drawcolormask.fsh");
+			if(hud_drawcolormask.program)
+			{
+				SHADER_UNIFORM(hud_drawcolormask, base, "base");
+				SHADER_UNIFORM(hud_drawcolormask, alpha_range, "alpha_range");
+			}
+			gEngfuncs.COM_FreeFile(hud_drawcolormask_fscode);
+		}
+
 		//gaussian blur code
 		if(pp_common_vscode)
 		{
@@ -153,6 +222,7 @@ void R_InitRefHUD(void)
 	r_hdr_exposure = gEngfuncs.pfnRegisterVariable("r_hdr_exposure", "5.0", FCVAR_ARCHIVE);
 	r_hdr_darkness = gEngfuncs.pfnRegisterVariable("r_hdr_darkness", "3.5", FCVAR_ARCHIVE);
 	r_hdr_adaptation = gEngfuncs.pfnRegisterVariable("r_hdr_adaptation", "50.0", FCVAR_ARCHIVE);
+	r_hudinworld_debug = gEngfuncs.pfnRegisterVariable("r_hudinworld_debug", "0", FCVAR_ARCHIVE);
 	r_hdr_debug = gEngfuncs.pfnRegisterVariable("r_hdr_debug", "0", FCVAR_ARCHIVE);
 
 	last_luminance = 0;
@@ -580,6 +650,27 @@ void R_ToneMapping(FBO_Container_t *src, FBO_Container_t *dst, FBO_Container_t *
 	qglUseProgramObjectARB(0);
 }
 
+void R_SetupGL_3DHUD(void)
+{
+	qglMatrixMode(GL_PROJECTION);
+	qglLoadIdentity();
+
+	float fov_x = 90;
+	float fov_y = CalcFov(fov_x, glheight*4/3, glheight);
+	screenaspect = (float)4 / 3;
+	MYgluPerspective(fov_y, screenaspect, 4, 8000);
+
+	qglMatrixMode(GL_MODELVIEW);
+	qglLoadIdentity();
+
+	qglRotatef(-90, 1, 0, 0);
+	qglRotatef(90, 0, 0, 1);
+	qglRotatef(-r_refdef->viewangles[2], 1, 0, 0);
+	qglRotatef(-r_refdef->viewangles[0], 0, 1, 0);
+	qglRotatef(-r_refdef->viewangles[1], 0, 0, 1);
+	qglTranslatef(-r_refdef->vieworg[0], -r_refdef->vieworg[1], -r_refdef->vieworg[2]);
+}
+
 void GLSetupHud(int w, int h)
 {
 	qglMatrixMode(GL_PROJECTION);
@@ -612,4 +703,169 @@ void GLEndHud(void)
 	qglDisable(GL_ALPHA_TEST);
 	qglEnable(GL_DEPTH_TEST);
 	qglDepthMask(1);
+}
+
+int R_Get3DHUDTexture(void)
+{
+	return s_3DHUDFBO.s_hBackBufferTex;
+}
+
+void R_Draw3DHUDQuad(int x, int y, int left, int top)
+{
+	float texcoord[4];
+	texcoord[0] = (float)(glwidth / 2 - left) / glwidth;
+	texcoord[1] = (float)(glheight / 2 - top) / glheight;
+	texcoord[2] = (float)(glwidth / 2 + left) / glwidth;
+	texcoord[3] = (float)(glheight / 2 + top) / glheight;
+
+	qglBindTexture(GL_TEXTURE_2D, s_3DHUDFBO.s_hBackBufferTex);
+	qglBegin(GL_QUADS);
+	qglTexCoord2f(texcoord[0], texcoord[3]);		
+	qglVertex3f(x-left, y-top, 0);
+	qglTexCoord2f(texcoord[2], texcoord[3]);
+	qglVertex3f(x+left, y-top, 0);
+	qglTexCoord2f(texcoord[2], texcoord[1]);
+	qglVertex3f(x+left, y+top, 0);
+	qglTexCoord2f(texcoord[0], texcoord[1]);
+	qglVertex3f(x-left, y+top, 0);
+	qglEnd();
+}
+
+void R_BeginDrawTrianglesInHUD_Direct(int x, int y)
+{
+	qglMatrixMode(GL_PROJECTION);
+	qglPushMatrix();
+
+	qglMatrixMode(GL_MODELVIEW);
+	qglPushMatrix();
+
+	R_SetupGL_3DHUD();
+
+	GLEndHud();
+	
+	qglViewport(x-(glheight*4/3)/2, glheight/2-y, glheight*4/3, glheight);
+
+	qglClear(GL_DEPTH_BUFFER_BIT);
+
+	draw3dhud = true;
+}
+
+void R_BeginDrawTrianglesInHUD_FBO(int x, int y, int left, int top)
+{
+	qglEnable(GL_DEPTH_TEST);
+
+	qglBindFramebufferEXT(GL_READ_FRAMEBUFFER, screenframebuffer);
+	qglBindFramebufferEXT(GL_DRAW_FRAMEBUFFER, s_3DHUDFBO.s_hBackBufferFBO);
+
+	qglClearColor(0.0, 0.0, 0.0, 0.0);
+	qglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	qglBlitFramebufferEXT(x-left, glheight-(y-top), x+left, glheight-(y+top), glwidth/2-left, glheight-(glheight/2-top), glwidth/2+left, glheight-(glheight/2+top), GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
+	qglMatrixMode(GL_PROJECTION);
+	qglPushMatrix();
+
+	qglMatrixMode(GL_MODELVIEW);
+	qglPushMatrix();
+
+	R_SetupGL_3DHUD();
+
+	GLEndHud();
+
+	qglViewport((glwidth - glheight*4/3)/2, 0, glheight*4/3, glheight);
+
+	draw3dhud = true;
+}
+
+void R_FinishDrawTrianglesInHUD(void)
+{
+	draw3dhud = false;
+
+	GLBeginHud();
+	qglViewport(0, 0, glwidth, glheight);
+
+	qglMatrixMode(GL_PROJECTION);
+	qglPopMatrix();
+
+	qglMatrixMode(GL_MODELVIEW);
+	qglPopMatrix();
+}
+
+void R_BeginDrawHUDInWorld(int texid, int w, int h)
+{
+	qglBindFramebufferEXT(GL_FRAMEBUFFER, s_HUDInWorldFBO.s_hBackBufferFBO);
+
+	r_hudinworld_texture = texid;
+
+	qglFramebufferTexture2DEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texid, 0);
+	
+	qglClearColor(0.0, 0.0, 0.0, 0.0);
+	qglClear(GL_COLOR_BUFFER_BIT);
+
+	qglMatrixMode(GL_PROJECTION);
+	qglPushMatrix();
+
+	qglMatrixMode(GL_MODELVIEW);
+	qglPushMatrix();
+
+	GLSetupHud(w, h);
+	GLBeginHud();
+	qglViewport(0, 0, w, h);
+
+	drawhudinworld = true;
+}
+
+void R_FinishDrawHUDInWorld(void)
+{
+	drawhudinworld = false;
+
+	GLEndHud();
+	qglViewport(0, 0, glwidth, glheight);
+
+	qglMatrixMode(GL_PROJECTION);
+	qglPopMatrix();
+
+	qglMatrixMode(GL_MODELVIEW);
+	qglPopMatrix();
+}
+
+void R_BeginDrawRoundRect(int centerX, int centerY, float radius, float blurdist)
+{
+	if(!hud_drawroundrect.program)
+		return;
+
+	qglUseProgramObjectARB(hud_drawroundrect.program);
+	qglUniform1iARB(hud_drawroundrect.base, 0);
+	qglUniform2fARB(hud_drawroundrect.center, (float)centerX, (float)centerY);
+	qglUniform1fARB(hud_drawroundrect.radius, radius);
+	qglUniform1fARB(hud_drawroundrect.blurdist, blurdist);
+}
+
+void R_BeginFXAA(int w, int h)
+{
+	qglUseProgramObjectARB(pp_fxaa.program);
+	qglUniform1iARB(pp_fxaa.tex0, 0);
+	qglUniform1fARB(pp_fxaa.rt_w, w);
+	qglUniform1fARB(pp_fxaa.rt_h, h);
+}
+
+void R_BeginDrawHudMask(int r, int g, int b)
+{
+	if(!hud_drawhudmask.program)
+		return;
+
+	qglUseProgramObjectARB(hud_drawhudmask.program);
+	qglUniform1iARB(hud_drawhudmask.base, 0);
+	qglUniform3fARB(hud_drawhudmask.src_col, r / 255.0f, g / 255.0f, b / 255.0f);
+}
+
+void R_BeginDrawColorMask(int minAlpha, int maxAlpha)
+{
+	if(!hud_drawcolormask.program)
+		return;
+
+	qglUseProgramObjectARB(hud_drawcolormask.program);
+	qglUniform1iARB(hud_drawcolormask.base, 0);
+	qglUniform2fARB(hud_drawcolormask.offset, 1.0f / 256, 1.0f / 256);
+	qglUniform2fARB(hud_drawcolormask.alpha_range, minAlpha / 255.0, maxAlpha / 255.0f);
 }

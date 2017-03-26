@@ -815,6 +815,16 @@ void QGL_InitExtension(void)
 {
 	const char *extension = (const char *)qglGetString(GL_EXTENSIONS);
 
+	gl_max_texture_size = 128;
+	qglGetIntegerv(GL_MAX_TEXTURE_SIZE, &gl_max_texture_size);
+	gl_max_texture_size /= 4;//4096 x RGBA
+
+	gl_max_ansio = 1;
+	if (strstr(extension, "GL_EXT_texture_filter_anisotropic"))
+	{
+		qglGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &gl_max_ansio);
+	}
+
 	if (strstr(extension, "GL_ARB_multitexture"))
 	{
 		qglActiveTextureARB = (PFNGLACTIVETEXTUREARBPROC)qwglGetProcAddress("glActiveTextureARB");
@@ -937,5 +947,10 @@ void QGL_InitExtension(void)
 	if(strstr(extension, "GL_NV_float_buffer"))
 	{
 		gl_float_buffer_support = true;;
+	}
+
+	if(strstr(extension, "GL_EXT_texture_compression_s3tc"))
+	{
+		gl_s3tc_compression_support = true;;
 	}
 }

@@ -1,6 +1,9 @@
 #include <metahook.h>
 #include "gl_local.h"
 #include "exportfuncs.h"
+#include "command.h"
+#include <IRenderer.h>
+#include <IBTEClient.h>
 
 cl_exportfuncs_t gExportfuncs;
 mh_interface_t *g_pInterface;
@@ -30,6 +33,11 @@ void IPlugins::Init(metahook_api_t *pAPI, mh_interface_t *pInterface, mh_engines
 	g_pMetaSave = pSave;
 	g_hInstance = GetModuleHandle(NULL);
 	g_bIsDebuggerPresent = IsDebuggerPresent() != FALSE;
+
+	//TODO: D3D Support
+	//g_pInterface->CommandLine->RemoveParm("-d3d");
+	//g_pInterface->CommandLine->AppendParm("-gl", NULL);
+	//g_pInterface->CommandLine->AppendParm("-32bpp", NULL);
 }
 
 void IPlugins::Shutdown(void)
@@ -46,6 +54,8 @@ void IPlugins::LoadEngine(void)
 	g_dwEngineBase = g_pMetaHookAPI->GetEngineBase();
 	g_dwEngineSize = g_pMetaHookAPI->GetEngineSize();
 
+	BTE_Init();
+	Memory_Init();
 	R_FillAddress();
 	R_InstallHook();
 }
@@ -55,20 +65,44 @@ void IPlugins::LoadClient(cl_exportfuncs_t *pExportFunc)
 	memcpy(&gExportfuncs, pExportFunc, sizeof(gExportfuncs));
 	memcpy(&gEngfuncs, g_pMetaSave->pEngineFuncs, sizeof(gEngfuncs));
 
+	Cmd_GetCmdBase = *(cmd_function_t *(**)(void))((DWORD)g_pMetaSave->pEngineFuncs + 0x198);
+
 	if(g_dwEngineBuildnum < 5953)
 	{
-		//g_pMetaHookAPI->InlineHook(gEngfuncs.pfnGetMousePos, hudGetMousePos, (void *&)gEngfuncs.pfnGetMousePos);
-		//g_pMetaHookAPI->InlineHook(gEngfuncs.GetMousePosition, hudGetMousePosition, (void *&)gEngfuncs.GetMousePosition);
+		g_pMetaHookAPI->InlineHook(gEngfuncs.pfnGetMousePos, hudGetMousePos, (void *&)gEngfuncs.pfnGetMousePos);
+		g_pMetaHookAPI->InlineHook(gEngfuncs.GetMousePosition, hudGetMousePosition, (void *&)gEngfuncs.GetMousePosition);
 	}
 
 	GL_Init();
 
+	pExportFunc->HUD_GetStudioModelInterface = HUD_GetStudioModelInterface;
+	pExportFunc->HUD_UpdateClientData = HUD_UpdateClientData;
+	pExportFunc->HUD_AddEntity = HUD_AddEntity;
 	pExportFunc->HUD_Redraw = HUD_Redraw;
 	pExportFunc->HUD_Init = HUD_Init;
+	pExportFunc->HUD_VidInit = HUD_VidInit;
+	pExportFunc->V_CalcRefdef = V_CalcRefdef;
 }
 
 void IPlugins::ExitGame(int iResult)
 {
+	R_Shutdown();
 }
 
 EXPOSE_SINGLE_INTERFACE(IPlugins, IPlugins, METAHOOK_PLUGIN_API_VERSION);
+
+//renderer exports
+
+void IRenderer::GetInterface(ref_export_t *pRefExports, const char *version)
+{
+	if(!strcmp(version, META_RENDERER_VERSION))
+	{
+		memcpy(pRefExports, &gRefExports, sizeof(ref_export_t));
+	}
+	else
+	{
+		Sys_ErrorEx("Meta Renderer interface version (%s) should be (%s)\n", version, META_RENDERER_VERSION);
+	}
+}
+
+EXPOSE_SINGLE_INTERFACE(IRenderer, IRenderer, RENDERER_API_VERSION);
